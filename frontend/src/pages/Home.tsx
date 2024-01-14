@@ -1,4 +1,5 @@
 import { Button, TextField, TablePagination, ThemeProvider } from "@mui/material";
+import axios from "axios";
 import React from "react";
 import Todo from "../components/Todo";
 import { useState, useEffect } from "react";
@@ -8,6 +9,13 @@ import { toFormikValidate } from "zod-formik-adapter";
 import { BASE_URL } from "../utils/config";
 import { useNavigate } from "react-router-dom";
 import { createTheme } from "@mui/material/styles";
+import { useDispatch, useSelector } from "react-redux";
+import {
+    addTodoRedux,
+    deleteTodoRedux,
+    loadTodos,
+    updateTodoRedux,
+} from "../redux/actions/todoActions";
 
 interface ITodoModel {
     todoId: string;
@@ -27,13 +35,15 @@ const basicSchema = z.object({
 });
 
 const Home = () => {
-    const [todo, setTodo] = useState<ITodoModel[]>([]);
+    const todo = useSelector((state: any) => state.todos);
+    console.log(todo);
     const [isUpdating, setIsUpdating] = useState(false);
     const [todoId, setTodoId] = useState("");
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(5);
     const [totalDocs, setTotalDocs] = useState(5);
     const navigate = useNavigate();
+    const dispatch = useDispatch();
 
     const handleLogout = () => {
         localStorage.removeItem("accessToken");
@@ -66,40 +76,46 @@ const Home = () => {
 
     const fetchTodo = async () => {
         try {
-            const response = await fetch(`${BASE_URL}/todo?pageIdx=${page}&limit=${limit}`, {
+            const response = await axios.get(`${BASE_URL}/todo`, {
+                params: {
+                    pageIdx: page,
+                    limit: limit,
+                },
                 headers: {
                     Authorization: "bearer " + localStorage.getItem("token") || "",
                 },
             });
-            const data = await response.json();
 
             if (response.status === 401) {
                 localStorage.removeItem("token");
             }
 
+            const data = response.data;
+
             if (data.status) {
-                setTodo(data.data.todoItems as ITodoModel[]);
+                dispatch(loadTodos(data.data.todoItems));
                 setTotalDocs(data.data.totalDocs);
             }
         } catch (err) {
-            console.log(err);
+            console.error(err);
         }
     };
-
     const addTodo = async (text: string) => {
         try {
-            const response = await fetch(`${BASE_URL}/todo`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: "bearer " + localStorage.getItem("token") || "",
-                },
-                body: JSON.stringify({ text }),
-            });
+            const response = await axios.post(
+                `${BASE_URL}/todo`,
+                { text },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "bearer " + localStorage.getItem("token") || "",
+                    },
+                }
+            );
             if (response.status === 401) {
                 localStorage.removeItem("token");
             }
-            const data = await response.json();
+            const data = response.data;
             if (data.status) {
                 text = "";
                 await fetchTodo();
@@ -117,19 +133,22 @@ const Home = () => {
         setIsUpdating: React.Dispatch<React.SetStateAction<boolean>>
     ) => {
         try {
-            const response = await fetch(`${BASE_URL}/todo`, {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: "bearer " + localStorage.getItem("token") || "",
-                },
-                body: JSON.stringify({ _id: todoId, text }),
-            });
+            const response = await axios.patch(
+                `${BASE_URL}/todo`,
+                { _id: todoId, text },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "bearer " + localStorage.getItem("token") || "",
+                    },
+                }
+            );
             if (response.status === 401) {
                 localStorage.removeItem("token");
             }
-            const data = await response.json();
+            const data = response.data;
             if (data.status) {
+                dispatch(updateTodoRedux(todoId, text));
                 setIsUpdating(false);
                 values.text = "";
                 await fetchTodo();
@@ -143,20 +162,19 @@ const Home = () => {
 
     const deleteTodo = async (todoId: string) => {
         try {
-            const response = await fetch(`${BASE_URL}/todo`, {
-                method: "DELETE",
+            const response = await axios.delete(`${BASE_URL}/todo`, {
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: "bearer " + localStorage.getItem("token") || "",
                 },
-                body: JSON.stringify({ todoId }),
+                data: { todoId },
             });
 
             if (response.status === 401) {
                 localStorage.removeItem("token");
             }
-            const data = await response.json();
-
+            const data = response.data;
+            dispatch(deleteTodoRedux(todoId));
             if (data.status) {
                 fetchTodo();
             } else {
